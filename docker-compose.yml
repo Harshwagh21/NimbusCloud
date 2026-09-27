@@ -1,0 +1,54 @@
+name: nimbus
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: nimbus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nimbus
+      POSTGRES_PASSWORD: nimbus_dev_password
+      POSTGRES_DB: nimbus
+    # 5433 on the host: the developer machine already runs PostgreSQL on 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      # Postgres 18 images store data in a major-version subdirectory, so the mount goes at
+      # /var/lib/postgresql, not /var/lib/postgresql/data. Mounting the old path makes the
+      # container refuse to start.
+      - postgres-data:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nimbus -d nimbus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # MinIO removed its own public images from Docker Hub and quay.io, so this uses
+  # Bitnami's MinIO package (still MinIO, 2025.5.24). Local development only.
+  minio:
+    image: bitnamilegacy/minio:latest
+    container_name: nimbus-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: nimbus_minio
+      MINIO_ROOT_PASSWORD: nimbus_minio_dev_password
+      # Created on first boot and kept private: all access goes through presigned URLs.
+      MINIO_DEFAULT_BUCKETS: "nimbus-files:none"
+      # Browsers upload straight to storage via presigned URLs, so the bucket must allow
+      # the frontend origin. Getting this wrong is the classic upload failure.
+      MINIO_API_CORS_ALLOW_ORIGIN: "http://localhost:3000"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+  minio-data:

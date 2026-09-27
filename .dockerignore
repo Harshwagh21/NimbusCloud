@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+bin/
+tmp/
+*.md
+AGENTS.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+.gitignore
+**/*_test.go

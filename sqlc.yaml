@@ -1,0 +1,33 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries
+    gen:
+      go:
+        package: dbgen
+        out: db/generated
+        sql_package: pgx/v5
+        # Nullable columns become *T rather than sql.NullT, which keeps the
+        # service layer free of database-specific wrapper types.
+        emit_pointers_for_null_types: true
+        emit_json_tags: false
+        emit_interface: true
+        emit_empty_slices: true
+        emit_prepared_queries: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              type: "uuid.UUID"
+              pointer: true
+              import: "github.com/google/uuid"
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true

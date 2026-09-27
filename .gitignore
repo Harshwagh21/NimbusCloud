@@ -1,0 +1,35 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+nimbus-api
+
+# Test artefacts
+*.test
+*.out
+coverage.*
+
+# Local run logs
+*.log
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local data volumes, if ever bind-mounted
+tmp/
+data/
