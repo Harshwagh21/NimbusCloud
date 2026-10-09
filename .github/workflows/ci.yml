@@ -19,7 +19,9 @@ jobs:
 
     services:
       postgres:
-        image: postgres:18-alpine
+        # Hosted runners share IPs, so anonymous Docker Hub pulls of library/postgres
+        # are rate-limited before any step runs. Same official image, public mirror.
+        image: public.ecr.aws/docker/library/postgres:18-alpine
         env:
           POSTGRES_USER: nimbus
           POSTGRES_PASSWORD: nimbus_test_password
