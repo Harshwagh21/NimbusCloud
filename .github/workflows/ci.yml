@@ -56,9 +56,11 @@ jobs:
 
       - run: go vet ./...
 
-      - uses: golangci/golangci-lint-action@v6
+      # Action v6 only installs golangci-lint v1. That binary is built with Go 1.24
+      # and refuses this module. v2.14.0 is built with Go 1.26 and reads version "2" config.
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.14.0
 
       - name: Test with race detector
         run: go test ./... -race -count=1 -coverprofile=coverage.out

@@ -80,6 +80,21 @@ func (r *reader) positiveInt(key string, fallback int64) int64 {
 	return value
 }
 
+// positiveInt32 parses a pool-size style setting. bitSize 32 rejects values that cannot
+// become int32, which is what pgxpool.Config.MaxConns requires.
+func (r *reader) positiveInt32(key string, fallback int32) int32 {
+	raw := r.optional(key, "")
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || value <= 0 {
+		r.fail(key, "must be a positive 32-bit integer, got %q", raw)
+		return fallback
+	}
+	return int32(value)
+}
+
 func (r *reader) boolean(key string, fallback bool) bool {
 	raw := r.optional(key, "")
 	if raw == "" {
