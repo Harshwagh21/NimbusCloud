@@ -87,6 +87,7 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		{"malformed duration", map[string]string{"ACCESS_TOKEN_TTL": "fifteen minutes"}, "ACCESS_TOKEN_TTL"},
 		{"non numeric connection count", map[string]string{"DATABASE_MAX_CONNS": "many"}, "DATABASE_MAX_CONNS"},
 		{"zero connection count", map[string]string{"DATABASE_MAX_CONNS": "0"}, "DATABASE_MAX_CONNS"},
+		{"connection count above int32", map[string]string{"DATABASE_MAX_CONNS": "2147483648"}, "DATABASE_MAX_CONNS"},
 		{"negative storage limit", map[string]string{"FREE_STORAGE_LIMIT_BYTES": "-1"}, "FREE_STORAGE_LIMIT_BYTES"},
 		{"unknown app env", map[string]string{"APP_ENV": "staging-ish"}, "APP_ENV"},
 	}

@@ -67,7 +67,7 @@ func Load() (Config, error) {
 		LogLevel: env.oneOf("LOG_LEVEL", "info", "debug", "info", "warn", "error"),
 
 		DatabaseURL:      env.required("DATABASE_URL"),
-		DatabaseMaxConns: int32(env.positiveInt("DATABASE_MAX_CONNS", 10)),
+		DatabaseMaxConns: env.positiveInt32("DATABASE_MAX_CONNS", 10),
 
 		JWTSecret:       env.required("JWT_SECRET"),
 		AccessTokenTTL:  env.duration("ACCESS_TOKEN_TTL", 15*time.Minute),
