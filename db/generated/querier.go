@@ -11,9 +11,23 @@ import (
 )
 
 type Querier interface {
+	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
+	CreateFolder(ctx context.Context, arg CreateFolderParams) (Folder, error)
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
+	CreateUploadSession(ctx context.Context, arg CreateUploadSessionParams) (UploadSession, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	GetFileByID(ctx context.Context, arg GetFileByIDParams) (File, error)
+	GetFolderByID(ctx context.Context, arg GetFolderByIDParams) (Folder, error)
+	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
+	GetUploadSessionByID(ctx context.Context, arg GetUploadSessionByIDParams) (UploadSession, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	HardDeleteFolder(ctx context.Context, arg HardDeleteFolderParams) error
+	ListFilesByFolder(ctx context.Context, arg ListFilesByFolderParams) ([]File, error)
+	ListFoldersByParent(ctx context.Context, arg ListFoldersByParentParams) ([]Folder, error)
+	RevokeRefreshTokenFamily(ctx context.Context, familyID uuid.UUID) error
+	SoftDeleteFile(ctx context.Context, arg SoftDeleteFileParams) (File, error)
+	SoftDeleteFolder(ctx context.Context, arg SoftDeleteFolderParams) (Folder, error)
 }
 
 var _ Querier = (*Queries)(nil)

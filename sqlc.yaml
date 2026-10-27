@@ -21,9 +21,9 @@ sql:
           - db_type: "uuid"
             nullable: true
             go_type:
-              type: "uuid.UUID"
-              pointer: true
               import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
           - db_type: "timestamptz"
             go_type: "time.Time"
           - db_type: "timestamptz"

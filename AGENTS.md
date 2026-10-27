@@ -12,20 +12,25 @@ No ORM. No `database/sql` hand-scanning. No framework swap without an ADR.
 ## Layout
 
 ```text
-cmd/api/main.go        wiring only
-internal/<domain>/     handler.go · service.go · repository.go · dto.go · *_test.go
-internal/platform/     apierr (error → status mapping) · validate
-db/migrations/         NNNN_name.up.sql + .down.sql
-db/queries/            hand-written SQL, input to sqlc
-db/generated/          sqlc output — committed, never hand-edited
-storage/               ObjectStorage interface + S3 implementation
-middleware/            requestid · logger · recovery · auth · cors · ratelimit
-config/                typed env config, fails fast
-tests/                 integration + authorization suites
+cmd/api/main.go                 wiring only
+internal/repository/<domain>/   repository.go · repository_test.go
+internal/service/<domain>/      service.go · service_test.go   (added with the feature)
+internal/handler/<domain>/      handler.go · dto.go            (added with the feature)
+internal/platform/              apierr (error → status mapping) · validate
+db/migrations/                  NNNN_name.up.sql + .down.sql
+db/queries/                     hand-written SQL, input to sqlc
+db/generated/                   sqlc output — committed, never hand-edited
+storage/                        ObjectStorage interface + S3 implementation
+middleware/                     requestid · logger · recovery · auth · cors · ratelimit
+config/                         typed env config, fails fast
+tests/                          integration + authorization suites
 ```
 
-Domains: `auth`, `user`, `folder`, `file`, `share`, `search`. A domain is a package, not a
-service — this is a modular monolith.
+Under each layer: `user` (account), `auth` (session), `content/folder` and `content/file`
+(items the user stores), plus `share` and `search` when those phases start.
+Layer names are `repository`, `service`, and `handler` — see ADR-0011. This is still one
+binary, not a microservice per domain. Do not create an empty layer folder before the phase
+that needs it.
 
 ## Layering — enforced
 

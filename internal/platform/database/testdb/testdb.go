@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 
 	"github.com/Harshwagh21/NimbusCloud/db"
 )
@@ -35,13 +37,40 @@ func Open(t testing.TB) *pgxpool.Pool {
 // TruncateUsers clears user rows between tests so cases do not share state.
 func TruncateUsers(t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
+	TruncateAll(t, pool)
+}
+
+// TruncateAll clears every domain table via CASCADE from users.
+func TruncateAll(t testing.TB, pool *pgxpool.Pool) {
+	t.Helper()
 	if _, err := pool.Exec(context.Background(), "TRUNCATE users RESTART IDENTITY CASCADE"); err != nil {
-		t.Fatalf("truncate users: %v", err)
+		t.Fatalf("truncate all tables: %v", err)
+	}
+}
+
+// loadProjectEnv finds the module .env when tests run inside a nested package.
+func loadProjectEnv() {
+	dir, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	for {
+		envFile := filepath.Join(dir, ".env")
+		if _, statErr := os.Stat(envFile); statErr == nil {
+			_ = godotenv.Load(envFile)
+			return
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return
+		}
+		dir = parent
 	}
 }
 
 func requireTestDatabaseURL(t testing.TB) string {
 	t.Helper()
+	loadProjectEnv()
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Fatal("TEST_DATABASE_URL is required for repository integration tests")

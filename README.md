@@ -72,16 +72,18 @@ make tools                           install sqlc, migrate, golangci-lint
 ## Layout
 
 ```text
-cmd/api/              wiring only
-internal/<domain>/    handler.go · service.go · repository.go  (auth, user, folder, file, share, search)
-internal/platform/    apierr, httpx, database, logging
-internal/health/      liveness and readiness probes
-db/migrations/        numbered, each reversible
-db/queries/           hand-written SQL, input to sqlc
-db/generated/         sqlc output, committed, never hand-edited
-storage/              ObjectStorage interface + S3 implementation
-middleware/           request id, logging, recovery, security headers, CORS
-config/               typed environment config, fails fast at startup
+cmd/api/                         wiring only
+internal/repository/             persistence: user, auth, content/folder, content/file
+internal/service/<domain>/       business rules, added with the feature
+internal/handler/<domain>/       HTTP, added with the feature
+internal/platform/               apierr, httpx, database, logging
+internal/health/                 liveness and readiness probes
+db/migrations/                   numbered, each reversible
+db/queries/                      hand-written SQL, input to sqlc
+db/generated/                    sqlc output, committed, never hand-edited
+storage/                         ObjectStorage interface + S3 implementation
+middleware/                      request id, logging, recovery, security headers, CORS
+config/                          typed environment config, fails fast at startup
 ```
 
 Strict layering: `handler → service → repository → PostgreSQL`, with object storage reached
@@ -108,4 +110,5 @@ there and when.
 ## Status
 
 Phase 0 complete: infrastructure, configuration, middleware, health probes, CI.
-Next: Phase 1, the database schema and typed query layer.
+Phase 1 data layer is in place (users, folders, files, refresh_tokens, upload_sessions).
+Next: Phase 2 authentication.

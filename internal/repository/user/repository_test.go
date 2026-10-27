@@ -10,7 +10,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/database/testdb"
-	"github.com/Harshwagh21/NimbusCloud/internal/user"
+	"github.com/Harshwagh21/NimbusCloud/internal/repository/user"
 )
 
 func TestMain(m *testing.M) {

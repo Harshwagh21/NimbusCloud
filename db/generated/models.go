@@ -5,10 +5,149 @@
 package dbgen
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type FileStatus string
+
+const (
+	FileStatusUPLOADING  FileStatus = "UPLOADING"
+	FileStatusREADY      FileStatus = "READY"
+	FileStatusFAILED     FileStatus = "FAILED"
+	FileStatusPROCESSING FileStatus = "PROCESSING"
+)
+
+func (e *FileStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FileStatus(s)
+	case string:
+		*e = FileStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FileStatus: %T", src)
+	}
+	return nil
+}
+
+type NullFileStatus struct {
+	FileStatus FileStatus
+	Valid      bool // Valid is true if FileStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFileStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.FileStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FileStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFileStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FileStatus), nil
+}
+
+type UploadSessionStatus string
+
+const (
+	UploadSessionStatusACTIVE    UploadSessionStatus = "ACTIVE"
+	UploadSessionStatusCOMPLETED UploadSessionStatus = "COMPLETED"
+	UploadSessionStatusABANDONED UploadSessionStatus = "ABANDONED"
+	UploadSessionStatusFAILED    UploadSessionStatus = "FAILED"
+)
+
+func (e *UploadSessionStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UploadSessionStatus(s)
+	case string:
+		*e = UploadSessionStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UploadSessionStatus: %T", src)
+	}
+	return nil
+}
+
+type NullUploadSessionStatus struct {
+	UploadSessionStatus UploadSessionStatus
+	Valid               bool // Valid is true if UploadSessionStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUploadSessionStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.UploadSessionStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UploadSessionStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUploadSessionStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UploadSessionStatus), nil
+}
+
+type File struct {
+	ID         uuid.UUID
+	OwnerID    uuid.UUID
+	FolderID   *uuid.UUID
+	Name       string
+	StorageKey string
+	MimeType   string
+	Size       int64
+	Checksum   *string
+	Status     FileStatus
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	DeletedAt  *time.Time
+}
+
+type Folder struct {
+	ID        uuid.UUID
+	OwnerID   uuid.UUID
+	ParentID  *uuid.UUID
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+}
+
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash string
+	FamilyID  uuid.UUID
+	ExpiresAt time.Time
+	RevokedAt *time.Time
+	CreatedAt time.Time
+}
+
+type UploadSession struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	FileID        uuid.UUID
+	UploadID      *string
+	DeclaredSize  int64
+	ReservedBytes int64
+	PartsUploaded int32
+	Status        UploadSessionStatus
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
 
 type User struct {
 	ID           uuid.UUID
