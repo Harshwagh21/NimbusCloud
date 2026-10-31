@@ -10,8 +10,9 @@ services:
       POSTGRES_PASSWORD: nimbus_dev_password
       POSTGRES_DB: nimbus
     # 5433 on the host: the developer machine already runs PostgreSQL on 5432.
+    # Set POSTGRES_HOST_PORT in .env when 5433 is taken by another container.
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       # Postgres 18 images store data in a major-version subdirectory, so the mount goes at
       # /var/lib/postgresql, not /var/lib/postgresql/data. Mounting the old path makes the
