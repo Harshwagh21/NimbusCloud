@@ -23,15 +23,24 @@ import (
 
 const connectTimeout = 10 * time.Second
 
+// testDatabaseLock is a session advisory lock. go test runs packages in parallel,
+// and they share one database: concurrent TRUNCATE deadlocks (40P01).
+// ponytail: one shared lock serializes integration tests; use a database per
+// package if the suite gets slow.
+const testDatabaseLock int64 = 7481901
+
 // Open migrates nimbus_test to the latest schema and returns a pool. Every test
-// package that needs Postgres should call this from a helper.
+// package that needs Postgres should call this from a helper. The returned pool
+// holds the shared test lock until the test ends.
 func Open(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := requireTestDatabaseURL(t)
+	pool := openPool(t, databaseURL)
+	holdTestLock(t, pool)
 	if err := migrateUp(databaseURL); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
-	return openPool(t, databaseURL)
+	return pool
 }
 
 // TruncateUsers clears user rows between tests so cases do not share state.
@@ -76,6 +85,22 @@ func requireTestDatabaseURL(t testing.TB) string {
 		t.Fatal("TEST_DATABASE_URL is required for repository integration tests")
 	}
 	return databaseURL
+}
+
+func holdTestLock(t testing.TB, pool *pgxpool.Pool) {
+	t.Helper()
+	conn, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire test database lock: %v", err)
+	}
+	if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_lock($1)", testDatabaseLock); err != nil {
+		conn.Release()
+		t.Fatalf("lock test database: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", testDatabaseLock)
+		conn.Release()
+	})
 }
 
 func openPool(t testing.TB, databaseURL string) *pgxpool.Pool {
