@@ -12,22 +12,30 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
 	"github.com/Harshwagh21/NimbusCloud/config"
+	authhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/auth"
 	"github.com/Harshwagh21/NimbusCloud/internal/health"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/database"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/logging"
+	authrepo "github.com/Harshwagh21/NimbusCloud/internal/repository/auth"
+	"github.com/Harshwagh21/NimbusCloud/internal/repository/user"
 	"github.com/Harshwagh21/NimbusCloud/internal/server"
+	authsvc "github.com/Harshwagh21/NimbusCloud/internal/service/auth"
+	"github.com/Harshwagh21/NimbusCloud/middleware"
 )
 
 // version is injected at build time with -ldflags and reported by the probes.
 var version = "dev"
 
 const (
-	readHeaderTimeout = 10 * time.Second
-	idleTimeout       = 60 * time.Second
-	shutdownTimeout   = 10 * time.Second
+	readHeaderTimeout  = 10 * time.Second
+	idleTimeout        = 60 * time.Second
+	shutdownTimeout    = 10 * time.Second
+	loginAttemptLimit  = 10
+	loginAttemptWindow = time.Minute
 )
 
 func main() {
@@ -56,12 +64,32 @@ func run() error {
 	}
 	defer pool.Close()
 
-	router := server.NewRouter(server.Dependencies{
-		Config: cfg,
-		Health: health.New(version, database.NewPoolChecker(pool)),
-	})
+	router, err := buildRouter(cfg, pool)
+	if err != nil {
+		return err
+	}
 
 	return serve(ctx, cfg, router)
+}
+
+func buildRouter(cfg config.Config, pool *pgxpool.Pool) (http.Handler, error) {
+	service, err := authsvc.New(user.NewRepository(pool), authrepo.NewRepository(pool), authsvc.Params{
+		JWTSecret:       cfg.JWTSecret,
+		AccessTokenTTL:  cfg.AccessTokenTTL,
+		RefreshTokenTTL: cfg.RefreshTokenTTL,
+		StorageLimit:    cfg.Storage.FreeLimitBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limiter := middleware.NewLimiter(loginAttemptLimit, loginAttemptWindow)
+	return server.NewRouter(server.Dependencies{
+		Config:           cfg,
+		Health:           health.New(version, database.NewPoolChecker(pool)),
+		Auth:             authhandler.New(service, cfg.RefreshTokenTTL),
+		ParseAccessToken: service.ParseAccessToken,
+		LimitAuth:        limiter.Handler(),
+	}), nil
 }
 
 // serve runs the server until the context is cancelled, then drains in-flight requests so a

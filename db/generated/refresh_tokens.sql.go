@@ -66,6 +66,42 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 	return i, err
 }
 
+const getRefreshTokenByHashForUpdate = `-- name: GetRefreshTokenByHashForUpdate :one
+SELECT id, user_id, token_hash, family_id, expires_at, revoked_at, created_at
+FROM refresh_tokens
+WHERE token_hash = $1
+FOR UPDATE
+`
+
+// Rotation locks this row so two refreshes of the same token cannot both succeed.
+// The unique token_hash index is the lookup; FOR UPDATE is the lock, not a new index.
+func (q *Queries) GetRefreshTokenByHashForUpdate(ctx context.Context, tokenHash string) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, getRefreshTokenByHashForUpdate, tokenHash)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.FamilyID,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
+UPDATE refresh_tokens
+SET revoked_at = now()
+WHERE id = $1
+  AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeRefreshToken(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRefreshToken, id)
+	return err
+}
+
 const revokeRefreshTokenFamily = `-- name: RevokeRefreshTokenFamily :exec
 UPDATE refresh_tokens
 SET revoked_at = now()

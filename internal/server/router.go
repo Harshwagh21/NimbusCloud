@@ -3,8 +3,10 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/Harshwagh21/NimbusCloud/config"
+	authhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/auth"
 	"github.com/Harshwagh21/NimbusCloud/internal/health"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/apierr"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/httpx"
@@ -14,8 +16,11 @@ import (
 // Dependencies is everything the router needs, injected rather than constructed here, so the
 // wiring stays visible in one place and the router is testable in isolation.
 type Dependencies struct {
-	Config config.Config
-	Health *health.Handler
+	Config           config.Config
+	Health           *health.Handler
+	Auth             *authhandler.Handler
+	ParseAccessToken func(string) (uuid.UUID, error)
+	LimitAuth        gin.HandlerFunc
 }
 
 // NewRouter builds the engine. Domain routes are registered under /api/v1 from Phase 2 on.
@@ -38,11 +43,18 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	)
 
 	registerProbes(router, deps.Health)
+	registerAPI(router, deps)
 	registerFallbacks(router)
 
-	router.Group("/api/v1")
-
 	return router
+}
+
+func registerAPI(router *gin.Engine, deps Dependencies) {
+	v1 := router.Group("/api/v1")
+	if deps.Auth == nil {
+		return
+	}
+	authhandler.Mount(v1, deps.Auth, deps.ParseAccessToken, deps.LimitAuth)
 }
 
 // Probes sit outside /api/v1 because they belong to the platform, not to the product API,

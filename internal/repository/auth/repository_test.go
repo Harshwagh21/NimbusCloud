@@ -97,6 +97,76 @@ func TestRevokeRefreshTokenFamilyMarksAllActiveRows(t *testing.T) {
 	}
 }
 
+func TestRevokeRefreshTokenMarksOnlyThatRow(t *testing.T) {
+	pool := testdb.Open(t)
+	testdb.TruncateAll(t, pool)
+	userID := seedUser(t, pool, "refresh-one@nimbus.test")
+	repo := auth.NewRepository(pool)
+	ctx := context.Background()
+	expiresAt := time.Now().UTC().Add(time.Hour)
+
+	kept, err := repo.CreateRefreshToken(ctx, auth.CreateRefreshTokenParams{
+		UserID: userID, TokenHash: "hash-kept", FamilyID: uuid.New(), ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		t.Fatalf("create kept: %v", err)
+	}
+	doomed, err := repo.CreateRefreshToken(ctx, auth.CreateRefreshTokenParams{
+		UserID: userID, TokenHash: "hash-doomed", FamilyID: uuid.New(), ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		t.Fatalf("create doomed: %v", err)
+	}
+
+	if err := repo.RevokeRefreshToken(ctx, doomed.ID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if err := repo.RevokeRefreshToken(ctx, doomed.ID); err != nil {
+		t.Fatalf("second revoke should be a no-op: %v", err)
+	}
+
+	revoked, err := repo.GetRefreshTokenByHash(ctx, "hash-doomed")
+	if err != nil || revoked.RevokedAt == nil {
+		t.Fatalf("doomed token should be revoked: row=%+v err=%v", revoked, err)
+	}
+	still, err := repo.GetRefreshTokenByHash(ctx, "hash-kept")
+	if err != nil || still.RevokedAt != nil || still.ID != kept.ID {
+		t.Fatalf("kept token should stay active: %+v err=%v", still, err)
+	}
+}
+
+func TestForUpdateReadsTheRowInsideATransaction(t *testing.T) {
+	pool := testdb.Open(t)
+	testdb.TruncateAll(t, pool)
+	userID := seedUser(t, pool, "refresh-lock@nimbus.test")
+	repo := auth.NewRepository(pool)
+	ctx := context.Background()
+
+	created, err := repo.CreateRefreshToken(ctx, auth.CreateRefreshTokenParams{
+		UserID:    userID,
+		TokenHash: "hash-locked",
+		FamilyID:  uuid.New(),
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	err = repo.WithinTx(ctx, func(q auth.Querier) error {
+		found, err := q.GetRefreshTokenByHashForUpdate(ctx, "hash-locked")
+		if err != nil {
+			return err
+		}
+		if found.ID != created.ID {
+			t.Fatalf("want %s, got %s", created.ID, found.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("within tx: %v", err)
+	}
+}
+
 func seedUser(t *testing.T, pool *pgxpool.Pool, email string) uuid.UUID {
 	t.Helper()
 	created, err := user.NewRepository(pool).Create(context.Background(), user.CreateParams{

@@ -19,12 +19,16 @@ type Querier interface {
 	GetFileByID(ctx context.Context, arg GetFileByIDParams) (File, error)
 	GetFolderByID(ctx context.Context, arg GetFolderByIDParams) (Folder, error)
 	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
+	// Rotation locks this row so two refreshes of the same token cannot both succeed.
+	// The unique token_hash index is the lookup; FOR UPDATE is the lock, not a new index.
+	GetRefreshTokenByHashForUpdate(ctx context.Context, tokenHash string) (RefreshToken, error)
 	GetUploadSessionByID(ctx context.Context, arg GetUploadSessionByIDParams) (UploadSession, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	HardDeleteFolder(ctx context.Context, arg HardDeleteFolderParams) error
 	ListFilesByFolder(ctx context.Context, arg ListFilesByFolderParams) ([]File, error)
 	ListFoldersByParent(ctx context.Context, arg ListFoldersByParentParams) ([]Folder, error)
+	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
 	RevokeRefreshTokenFamily(ctx context.Context, familyID uuid.UUID) error
 	SoftDeleteFile(ctx context.Context, arg SoftDeleteFileParams) (File, error)
 	SoftDeleteFolder(ctx context.Context, arg SoftDeleteFolderParams) (Folder, error)
