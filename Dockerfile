@@ -1,8 +1,9 @@
 # Build a static binary, then ship it on a minimal base. The resulting image is a few
 # megabytes, which matters on free-tier container hosts with tight memory limits.
-# These are the Docker Official Images, pulled from the ECR Public mirror so GitHub
-# Actions does not hit Docker Hub's anonymous rate limit.
-FROM public.ecr.aws/docker/library/golang:1.26-alpine AS build
+# Docker Official Images, via Google's pull-through cache of Docker Hub.
+# Anonymous Docker Hub pulls and anonymous public.ecr.aws pulls both 429 on
+# GitHub-hosted runners, which share egress IPs. mirror.gcr.io does not.
+FROM mirror.gcr.io/library/golang:1.26-alpine AS build
 
 WORKDIR /src
 
@@ -17,7 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/nimbus-api ./cmd/api
 
-FROM public.ecr.aws/docker/library/alpine:3.22
+FROM mirror.gcr.io/library/alpine:3.22
 
 # Presigned URL generation and TLS calls to R2 need root certificates and correct time.
 RUN apk add --no-cache ca-certificates tzdata curl \
