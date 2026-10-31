@@ -19,7 +19,6 @@ import (
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/apierr"
 	"github.com/Harshwagh21/NimbusCloud/internal/server"
 	authsvc "github.com/Harshwagh21/NimbusCloud/internal/service/auth"
-	"github.com/Harshwagh21/NimbusCloud/middleware"
 )
 
 func TestMain(m *testing.M) {
@@ -39,7 +38,6 @@ func TestMeReturnsOnlyTheAuthenticatedUser(t *testing.T) {
 		Health:           health.New("test"),
 		Auth:             authhandler.New(gate, time.Hour),
 		ParseAccessToken: gate.parse,
-		LimitAuth:        middleware.NewLimiter(10, time.Minute).Handler(),
 	})
 
 	missing := getMe(engine, "")

@@ -31,7 +31,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	router := gin.New()
 	// No proxy is trusted by default; a forwarded-for header would otherwise let a client
-	// choose the IP that rate limiting and audit logs record.
+	// choose the IP that audit logs record.
 	_ = router.SetTrustedProxies(nil)
 
 	router.Use(

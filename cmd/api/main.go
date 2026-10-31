@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/harshwagh21/reliq/pkg/ratelimit"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
@@ -34,8 +35,8 @@ const (
 	readHeaderTimeout  = 10 * time.Second
 	idleTimeout        = 60 * time.Second
 	shutdownTimeout    = 10 * time.Second
-	loginAttemptLimit  = 10
-	loginAttemptWindow = time.Minute
+	loginBurst         = 10
+	loginRatePerSecond = 10.0 / 60.0
 )
 
 func main() {
@@ -82,13 +83,16 @@ func buildRouter(cfg config.Config, pool *pgxpool.Pool) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	limiter := middleware.NewLimiter(loginAttemptLimit, loginAttemptWindow)
+	limiter, err := ratelimit.New(loginRatePerSecond, loginBurst)
+	if err != nil {
+		return nil, err
+	}
 	return server.NewRouter(server.Dependencies{
 		Config:           cfg,
 		Health:           health.New(version, database.NewPoolChecker(pool)),
 		Auth:             authhandler.New(service, cfg.RefreshTokenTTL),
 		ParseAccessToken: service.ParseAccessToken,
-		LimitAuth:        limiter.Handler(),
+		LimitAuth:        middleware.AuthLimit(limiter),
 	}), nil
 }
 

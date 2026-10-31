@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/harshwagh21/reliq/pkg/ratelimit"
 
 	"github.com/Harshwagh21/NimbusCloud/config"
 	authhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/auth"
@@ -89,10 +90,13 @@ func TestAuthRoutesMapErrorsAndClearABadRefreshCookie(t *testing.T) {
 	}
 }
 
-func TestLoginIsRateLimitedPerClientHost(t *testing.T) {
+func TestLoginReturnsTooManyRequestsAfterTheBurst(t *testing.T) {
 	script := &scripted{err: apierr.Unauthorized("INVALID_CREDENTIALS", "email or password is incorrect")}
-	limit := middleware.NewLimiter(2, time.Minute).Handler()
-	engine := router(script, limit)
+	limiter, err := ratelimit.New(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := router(script, middleware.AuthLimit(limiter))
 	for i := range 2 {
 		recorder := postFrom(t, engine, "/api/v1/auth/login", `{"email":"ada@nimbus.test","password":"nope"}`, "192.0.2.9:100"+string(rune('0'+i)))
 		if recorder.Code != http.StatusUnauthorized {
