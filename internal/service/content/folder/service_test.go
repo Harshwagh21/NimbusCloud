@@ -133,6 +133,144 @@ func TestPathRootToLeaf(t *testing.T) {
 	}
 }
 
+func TestUpdateRenameAndDuplicate(t *testing.T) {
+	store := newFakeStore()
+	svc := foldersvc.New(store)
+	ownerID := uuid.New()
+	ctx := context.Background()
+
+	alpha, err := svc.Create(ctx, ownerID, "Alpha", nil)
+	if err != nil {
+		t.Fatalf("create alpha: %v", err)
+	}
+	beta, err := svc.Create(ctx, ownerID, "Beta", nil)
+	if err != nil {
+		t.Fatalf("create beta: %v", err)
+	}
+
+	blank := "   "
+	if _, err := svc.Update(ctx, ownerID, alpha.ID, foldersvc.UpdateInput{Name: &blank}); codeOf(err) != "VALIDATION_ERROR" {
+		t.Fatalf("blank rename: %v", err)
+	}
+
+	newName := "Renamed"
+	updated, err := svc.Update(ctx, ownerID, alpha.ID, foldersvc.UpdateInput{Name: &newName})
+	if err != nil || updated.Name != "Renamed" {
+		t.Fatalf("rename: %+v err=%v", updated, err)
+	}
+
+	taken := "Renamed"
+	if _, err := svc.Update(ctx, ownerID, beta.ID, foldersvc.UpdateInput{Name: &taken}); codeOf(err) != "FOLDER_NAME_TAKEN" {
+		t.Fatalf("duplicate rename: %v", err)
+	}
+}
+
+func TestUpdateMoveRules(t *testing.T) {
+	store := newFakeStore()
+	svc := foldersvc.New(store)
+	ownerID := uuid.New()
+	ctx := context.Background()
+
+	root, _ := svc.Create(ctx, ownerID, "Root", nil)
+	rootID := root.ID
+	child, _ := svc.Create(ctx, ownerID, "Child", &rootID)
+	childID := child.ID
+	grand, _ := svc.Create(ctx, ownerID, "Grand", &childID)
+	other, _ := svc.Create(ctx, ownerID, "Other", nil)
+
+	missing := uuid.New()
+	if _, err := svc.Update(ctx, ownerID, other.ID, foldersvc.UpdateInput{
+		ParentID:  &missing,
+		ParentSet: true,
+	}); codeOf(err) != "FOLDER_NOT_FOUND" {
+		t.Fatalf("missing parent: %v", err)
+	}
+
+	if _, err := svc.Update(ctx, ownerID, root.ID, foldersvc.UpdateInput{
+		ParentID:  &rootID,
+		ParentSet: true,
+	}); codeOf(err) != "INVALID_FOLDER_MOVE" {
+		t.Fatalf("move into self: %v", err)
+	}
+
+	if _, err := svc.Update(ctx, ownerID, root.ID, foldersvc.UpdateInput{
+		ParentID:  &grand.ID,
+		ParentSet: true,
+	}); codeOf(err) != "INVALID_FOLDER_MOVE" {
+		t.Fatalf("move into descendant: %v", err)
+	}
+
+	moved, err := svc.Update(ctx, ownerID, child.ID, foldersvc.UpdateInput{
+		ParentID:  &other.ID,
+		ParentSet: true,
+	})
+	if err != nil || moved.ParentID == nil || *moved.ParentID != other.ID {
+		t.Fatalf("valid move: %+v err=%v", moved, err)
+	}
+
+	toRoot, err := svc.Update(ctx, ownerID, child.ID, foldersvc.UpdateInput{ParentSet: true})
+	if err != nil || toRoot.ParentID != nil {
+		t.Fatalf("move to root: %+v err=%v", toRoot, err)
+	}
+}
+
+func TestUpdateMoveRejectsDepthOverflow(t *testing.T) {
+	store := newFakeStore()
+	svc := foldersvc.New(store)
+	ownerID := uuid.New()
+	ctx := context.Background()
+
+	var parentID *uuid.UUID
+	for i := 0; i < foldersvc.MaxDepth; i++ {
+		created, err := svc.Create(ctx, ownerID, nameAt(i), parentID)
+		if err != nil {
+			t.Fatalf("seed depth %d: %v", i+1, err)
+		}
+		id := created.ID
+		parentID = &id
+	}
+	leafID := *parentID
+	mover, err := svc.Create(ctx, ownerID, "Mover", nil)
+	if err != nil {
+		t.Fatalf("create mover: %v", err)
+	}
+
+	if _, err := svc.Update(ctx, ownerID, mover.ID, foldersvc.UpdateInput{
+		ParentID:  &leafID,
+		ParentSet: true,
+	}); codeOf(err) != "FOLDER_TOO_DEEP" {
+		t.Fatalf("want FOLDER_TOO_DEEP, got %v", err)
+	}
+}
+
+func TestDeleteEmptyAndNotEmpty(t *testing.T) {
+	store := newFakeStore()
+	svc := foldersvc.New(store)
+	ownerID := uuid.New()
+	otherOwner := uuid.New()
+	ctx := context.Background()
+
+	parent, _ := svc.Create(ctx, ownerID, "Parent", nil)
+	parentID := parent.ID
+	_, _ = svc.Create(ctx, ownerID, "Child", &parentID)
+
+	if err := svc.Delete(ctx, ownerID, parent.ID); codeOf(err) != "FOLDER_NOT_EMPTY" {
+		t.Fatalf("not empty: %v", err)
+	}
+
+	empty, _ := svc.Create(ctx, ownerID, "Empty", nil)
+	if err := svc.Delete(ctx, ownerID, empty.ID); err != nil {
+		t.Fatalf("delete empty: %v", err)
+	}
+	if _, err := svc.Get(ctx, ownerID, empty.ID); codeOf(err) != "FOLDER_NOT_FOUND" {
+		t.Fatalf("deleted get: %v", err)
+	}
+
+	if err := svc.Delete(ctx, otherOwner, parent.ID); codeOf(err) != "FOLDER_NOT_FOUND" {
+		t.Fatalf("cross-owner delete: %v", err)
+	}
+}
+
 func codeOf(err error) string {
 	var typed *apierr.Error
 	if errors.As(err, &typed) {
@@ -214,6 +352,51 @@ func (f *fakeStore) ListPath(_ context.Context, id, ownerID uuid.UUID) ([]dbgen.
 		chain[i], chain[j] = chain[j], chain[i]
 	}
 	return chain, nil
+}
+
+func (f *fakeStore) Update(_ context.Context, params folderrepo.UpdateParams) (dbgen.Folder, error) {
+	folder, ok := f.byID[params.ID]
+	if !ok || folder.OwnerID != params.OwnerID || folder.DeletedAt != nil {
+		return dbgen.Folder{}, pgx.ErrNoRows
+	}
+	for _, existing := range f.byID {
+		if existing.ID == params.ID || existing.DeletedAt != nil {
+			continue
+		}
+		if existing.OwnerID == params.OwnerID &&
+			existing.Name == params.Name &&
+			sameParent(existing.ParentID, params.ParentID) {
+			return dbgen.Folder{}, &pgconn.PgError{Code: "23505"}
+		}
+	}
+	folder.Name = params.Name
+	folder.ParentID = params.ParentID
+	folder.UpdatedAt = time.Now().UTC()
+	f.byID[folder.ID] = folder
+	return folder, nil
+}
+
+func (f *fakeStore) CountLiveChildren(_ context.Context, ownerID, folderID uuid.UUID) (int64, error) {
+	var count int64
+	for _, folder := range f.byID {
+		if folder.OwnerID == ownerID && folder.DeletedAt == nil &&
+			folder.ParentID != nil && *folder.ParentID == folderID {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (f *fakeStore) SoftDelete(_ context.Context, id, ownerID uuid.UUID) (dbgen.Folder, error) {
+	folder, ok := f.byID[id]
+	if !ok || folder.OwnerID != ownerID || folder.DeletedAt != nil {
+		return dbgen.Folder{}, pgx.ErrNoRows
+	}
+	now := time.Now().UTC()
+	folder.DeletedAt = &now
+	folder.UpdatedAt = now
+	f.byID[id] = folder
+	return folder, nil
 }
 
 func sameParent(a, b *uuid.UUID) bool {

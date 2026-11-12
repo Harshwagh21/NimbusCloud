@@ -25,6 +25,9 @@ type store interface {
 	GetByID(ctx context.Context, id, ownerID uuid.UUID) (dbgen.Folder, error)
 	ListByParent(ctx context.Context, ownerID uuid.UUID, parentID *uuid.UUID) ([]dbgen.Folder, error)
 	ListPath(ctx context.Context, id, ownerID uuid.UUID) ([]dbgen.Folder, error)
+	Update(ctx context.Context, params folderrepo.UpdateParams) (dbgen.Folder, error)
+	CountLiveChildren(ctx context.Context, ownerID, folderID uuid.UUID) (int64, error)
+	SoftDelete(ctx context.Context, id, ownerID uuid.UUID) (dbgen.Folder, error)
 }
 
 // Service enforces folder rules without knowing about HTTP.
@@ -93,6 +96,99 @@ func (s *Service) Path(ctx context.Context, ownerID, id uuid.UUID) ([]dbgen.Fold
 	return path, nil
 }
 
+// UpdateInput patches a folder. ParentSet applies ParentID even when nil (move to root).
+type UpdateInput struct {
+	Name      *string
+	ParentID  *uuid.UUID
+	ParentSet bool
+}
+
+func (s *Service) Update(ctx context.Context, ownerID, id uuid.UUID, input UpdateInput) (dbgen.Folder, error) {
+	current, err := s.Get(ctx, ownerID, id)
+	if err != nil {
+		return dbgen.Folder{}, err
+	}
+
+	nextName := current.Name
+	if input.Name != nil {
+		nextName, err = normalizeName(*input.Name)
+		if err != nil {
+			return dbgen.Folder{}, err
+		}
+	}
+
+	nextParent := current.ParentID
+	if input.ParentSet {
+		nextParent = input.ParentID
+		if err := s.ensureMoveAllowed(ctx, ownerID, id, nextParent); err != nil {
+			return dbgen.Folder{}, err
+		}
+	}
+
+	updated, err := s.store.Update(ctx, folderrepo.UpdateParams{
+		ID:       id,
+		OwnerID:  ownerID,
+		Name:     nextName,
+		ParentID: nextParent,
+	})
+	if isUniqueViolation(err) {
+		return dbgen.Folder{}, nameTaken()
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return dbgen.Folder{}, notFound()
+	}
+	if err != nil {
+		return dbgen.Folder{}, apierr.Internal(err)
+	}
+	return updated, nil
+}
+
+func (s *Service) Delete(ctx context.Context, ownerID, id uuid.UUID) error {
+	if _, err := s.Get(ctx, ownerID, id); err != nil {
+		return err
+	}
+	count, err := s.store.CountLiveChildren(ctx, ownerID, id)
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	if count > 0 {
+		return notEmpty()
+	}
+	_, err = s.store.SoftDelete(ctx, id, ownerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) ensureMoveAllowed(ctx context.Context, ownerID, folderID uuid.UUID, newParent *uuid.UUID) error {
+	if newParent == nil {
+		return nil
+	}
+	if *newParent == folderID {
+		return invalidMove()
+	}
+	path, err := s.store.ListPath(ctx, *newParent, ownerID)
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	if len(path) == 0 {
+		return notFound()
+	}
+	for _, ancestor := range path {
+		if ancestor.ID == folderID {
+			return invalidMove()
+		}
+	}
+	if len(path)+1 > MaxDepth {
+		return tooDeep()
+	}
+	return nil
+}
+
 func (s *Service) ensureParentAllowsChild(ctx context.Context, ownerID uuid.UUID, parentID *uuid.UUID) error {
 	if parentID == nil {
 		return nil
@@ -131,6 +227,14 @@ func nameTaken() error {
 
 func tooDeep() error {
 	return apierr.BadRequest("FOLDER_TOO_DEEP", "folder nesting limit reached")
+}
+
+func invalidMove() error {
+	return apierr.BadRequest("INVALID_FOLDER_MOVE", "cannot move a folder into itself or a descendant")
+}
+
+func notEmpty() error {
+	return apierr.Conflict("FOLDER_NOT_EMPTY", "folder must be empty before it can be deleted")
 }
 
 func isUniqueViolation(err error) bool {
