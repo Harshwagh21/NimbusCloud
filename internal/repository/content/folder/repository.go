@@ -27,6 +27,14 @@ type CreateParams struct {
 	Name     string
 }
 
+// UpdateParams replaces name and parent for a live owned folder.
+type UpdateParams struct {
+	ID       uuid.UUID
+	OwnerID  uuid.UUID
+	Name     string
+	ParentID *uuid.UUID
+}
+
 func (r *Repository) Create(ctx context.Context, params CreateParams) (dbgen.Folder, error) {
 	return r.queries.CreateFolder(ctx, dbgen.CreateFolderParams{
 		OwnerID:  params.OwnerID,
@@ -47,6 +55,47 @@ func (r *Repository) ListByParent(ctx context.Context, ownerID uuid.UUID, parent
 		OwnerID:  ownerID,
 		ParentID: parentID,
 	})
+}
+
+func (r *Repository) Update(ctx context.Context, params UpdateParams) (dbgen.Folder, error) {
+	return r.queries.UpdateFolder(ctx, dbgen.UpdateFolderParams{
+		ID:       params.ID,
+		OwnerID:  params.OwnerID,
+		Name:     params.Name,
+		ParentID: params.ParentID,
+	})
+}
+
+func (r *Repository) CountLiveChildren(ctx context.Context, ownerID, folderID uuid.UUID) (int64, error) {
+	parentID := folderID
+	return r.queries.CountLiveChildren(ctx, dbgen.CountLiveChildrenParams{
+		OwnerID:  ownerID,
+		ParentID: &parentID,
+	})
+}
+
+// ListPath returns ancestors from root to the folder (inclusive). Empty if missing.
+func (r *Repository) ListPath(ctx context.Context, id, ownerID uuid.UUID) ([]dbgen.Folder, error) {
+	rows, err := r.queries.ListFolderPath(ctx, dbgen.ListFolderPathParams{
+		ID:      id,
+		OwnerID: ownerID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbgen.Folder, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, dbgen.Folder{
+			ID:        row.ID,
+			OwnerID:   row.OwnerID,
+			ParentID:  row.ParentID,
+			Name:      row.Name,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+			DeletedAt: row.DeletedAt,
+		})
+	}
+	return out, nil
 }
 
 func (r *Repository) SoftDelete(ctx context.Context, id, ownerID uuid.UUID) (dbgen.Folder, error) {

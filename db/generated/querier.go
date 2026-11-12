@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	CountLiveChildren(ctx context.Context, arg CountLiveChildrenParams) (int64, error)
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateFolder(ctx context.Context, arg CreateFolderParams) (Folder, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
@@ -27,11 +28,14 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	HardDeleteFolder(ctx context.Context, arg HardDeleteFolderParams) error
 	ListFilesByFolder(ctx context.Context, arg ListFilesByFolderParams) ([]File, error)
+	// Walk from the folder up to the root. Ordered root → leaf for breadcrumbs.
+	ListFolderPath(ctx context.Context, arg ListFolderPathParams) ([]ListFolderPathRow, error)
 	ListFoldersByParent(ctx context.Context, arg ListFoldersByParentParams) ([]Folder, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
 	RevokeRefreshTokenFamily(ctx context.Context, familyID uuid.UUID) error
 	SoftDeleteFile(ctx context.Context, arg SoftDeleteFileParams) (File, error)
 	SoftDeleteFolder(ctx context.Context, arg SoftDeleteFolderParams) (Folder, error)
+	UpdateFolder(ctx context.Context, arg UpdateFolderParams) (Folder, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -7,9 +7,30 @@ package dbgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const countLiveChildren = `-- name: CountLiveChildren :one
+SELECT COUNT(*)::bigint AS count
+FROM folders
+WHERE owner_id = $1
+  AND parent_id = $2
+  AND deleted_at IS NULL
+`
+
+type CountLiveChildrenParams struct {
+	OwnerID  uuid.UUID
+	ParentID *uuid.UUID
+}
+
+func (q *Queries) CountLiveChildren(ctx context.Context, arg CountLiveChildrenParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLiveChildren, arg.OwnerID, arg.ParentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const createFolder = `-- name: CreateFolder :one
 INSERT INTO folders (owner_id, parent_id, name)
@@ -82,6 +103,94 @@ func (q *Queries) HardDeleteFolder(ctx context.Context, arg HardDeleteFolderPara
 	return err
 }
 
+const listFolderPath = `-- name: ListFolderPath :many
+WITH RECURSIVE ancestors AS (
+    SELECT
+        f.id,
+        f.owner_id,
+        f.parent_id,
+        f.name,
+        f.created_at,
+        f.updated_at,
+        f.deleted_at,
+        0 AS lvl
+    FROM folders f
+    WHERE f.id = $1
+      AND f.owner_id = $2
+      AND f.deleted_at IS NULL
+
+    UNION ALL
+
+    SELECT
+        p.id,
+        p.owner_id,
+        p.parent_id,
+        p.name,
+        p.created_at,
+        p.updated_at,
+        p.deleted_at,
+        a.lvl + 1
+    FROM folders p
+    INNER JOIN ancestors a ON p.id = a.parent_id
+    WHERE p.owner_id = $2
+      AND p.deleted_at IS NULL
+)
+SELECT
+    ancestors.id,
+    ancestors.owner_id,
+    ancestors.parent_id,
+    ancestors.name,
+    ancestors.created_at,
+    ancestors.updated_at,
+    ancestors.deleted_at
+FROM ancestors
+ORDER BY ancestors.lvl DESC
+`
+
+type ListFolderPathParams struct {
+	ID      uuid.UUID
+	OwnerID uuid.UUID
+}
+
+type ListFolderPathRow struct {
+	ID        uuid.UUID
+	OwnerID   uuid.UUID
+	ParentID  *uuid.UUID
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+}
+
+// Walk from the folder up to the root. Ordered root → leaf for breadcrumbs.
+func (q *Queries) ListFolderPath(ctx context.Context, arg ListFolderPathParams) ([]ListFolderPathRow, error) {
+	rows, err := q.db.Query(ctx, listFolderPath, arg.ID, arg.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFolderPathRow{}
+	for rows.Next() {
+		var i ListFolderPathRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.ParentID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFoldersByParent = `-- name: ListFoldersByParent :many
 SELECT id, owner_id, parent_id, name, created_at, updated_at, deleted_at
 FROM folders
@@ -141,6 +250,44 @@ type SoftDeleteFolderParams struct {
 
 func (q *Queries) SoftDeleteFolder(ctx context.Context, arg SoftDeleteFolderParams) (Folder, error) {
 	row := q.db.QueryRow(ctx, softDeleteFolder, arg.ID, arg.OwnerID)
+	var i Folder
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.ParentID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateFolder = `-- name: UpdateFolder :one
+UPDATE folders
+SET name = $3,
+    parent_id = $4,
+    updated_at = now()
+WHERE id = $1
+  AND owner_id = $2
+  AND deleted_at IS NULL
+RETURNING id, owner_id, parent_id, name, created_at, updated_at, deleted_at
+`
+
+type UpdateFolderParams struct {
+	ID       uuid.UUID
+	OwnerID  uuid.UUID
+	Name     string
+	ParentID *uuid.UUID
+}
+
+func (q *Queries) UpdateFolder(ctx context.Context, arg UpdateFolderParams) (Folder, error) {
+	row := q.db.QueryRow(ctx, updateFolder,
+		arg.ID,
+		arg.OwnerID,
+		arg.Name,
+		arg.ParentID,
+	)
 	var i Folder
 	err := row.Scan(
 		&i.ID,
