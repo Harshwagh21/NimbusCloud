@@ -7,6 +7,7 @@ import (
 
 	"github.com/Harshwagh21/NimbusCloud/config"
 	authhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/auth"
+	folderhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/content/folder"
 	"github.com/Harshwagh21/NimbusCloud/internal/health"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/apierr"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/httpx"
@@ -19,6 +20,7 @@ type Dependencies struct {
 	Config           config.Config
 	Health           *health.Handler
 	Auth             *authhandler.Handler
+	Folders          *folderhandler.Handler
 	ParseAccessToken func(string) (uuid.UUID, error)
 	LimitAuth        gin.HandlerFunc
 }
@@ -51,10 +53,12 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 func registerAPI(router *gin.Engine, deps Dependencies) {
 	v1 := router.Group("/api/v1")
-	if deps.Auth == nil {
-		return
+	if deps.Auth != nil {
+		authhandler.Mount(v1, deps.Auth, deps.ParseAccessToken, deps.LimitAuth)
 	}
-	authhandler.Mount(v1, deps.Auth, deps.ParseAccessToken, deps.LimitAuth)
+	if deps.Folders != nil {
+		folderhandler.Mount(v1, deps.Folders, deps.ParseAccessToken)
+	}
 }
 
 // Probes sit outside /api/v1 because they belong to the platform, not to the product API,

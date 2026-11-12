@@ -18,13 +18,16 @@ import (
 
 	"github.com/Harshwagh21/NimbusCloud/config"
 	authhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/auth"
+	folderhandler "github.com/Harshwagh21/NimbusCloud/internal/handler/content/folder"
 	"github.com/Harshwagh21/NimbusCloud/internal/health"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/database"
 	"github.com/Harshwagh21/NimbusCloud/internal/platform/logging"
 	authrepo "github.com/Harshwagh21/NimbusCloud/internal/repository/auth"
+	folderrepo "github.com/Harshwagh21/NimbusCloud/internal/repository/content/folder"
 	"github.com/Harshwagh21/NimbusCloud/internal/repository/user"
 	"github.com/Harshwagh21/NimbusCloud/internal/server"
 	authsvc "github.com/Harshwagh21/NimbusCloud/internal/service/auth"
+	foldersvc "github.com/Harshwagh21/NimbusCloud/internal/service/content/folder"
 	"github.com/Harshwagh21/NimbusCloud/middleware"
 )
 
@@ -91,6 +94,7 @@ func buildRouter(cfg config.Config, pool *pgxpool.Pool) (http.Handler, error) {
 		Config:           cfg,
 		Health:           health.New(version, database.NewPoolChecker(pool)),
 		Auth:             authhandler.New(service, cfg.RefreshTokenTTL),
+		Folders:          folderhandler.New(foldersvc.New(folderrepo.NewRepository(pool))),
 		ParseAccessToken: service.ParseAccessToken,
 		LimitAuth:        middleware.AuthLimit(limiter),
 	}), nil

@@ -85,15 +85,7 @@ func (r *Repository) ListPath(ctx context.Context, id, ownerID uuid.UUID) ([]dbg
 	}
 	out := make([]dbgen.Folder, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, dbgen.Folder{
-			ID:        row.ID,
-			OwnerID:   row.OwnerID,
-			ParentID:  row.ParentID,
-			Name:      row.Name,
-			CreatedAt: row.CreatedAt,
-			UpdatedAt: row.UpdatedAt,
-			DeletedAt: row.DeletedAt,
-		})
+		out = append(out, dbgen.Folder(row))
 	}
 	return out, nil
 }

@@ -280,7 +280,7 @@ func codeOf(err error) string {
 }
 
 func nameAt(i int) string {
-	return string(rune('A' + (i % 26))) + uuid.NewString()[:8]
+	return string(rune('A'+(i%26))) + uuid.NewString()[:8]
 }
 
 type fakeStore struct {
