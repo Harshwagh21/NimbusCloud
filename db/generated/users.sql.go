@@ -11,6 +11,29 @@ import (
 	"github.com/google/uuid"
 )
 
+const addStorageUsed = `-- name: AddStorageUsed :one
+UPDATE users
+SET storage_used = storage_used + $1,
+    updated_at = now()
+WHERE id = $2
+  AND storage_used + $1 <= storage_limit
+RETURNING storage_used
+`
+
+type AddStorageUsedParams struct {
+	Bytes int64
+	ID    uuid.UUID
+}
+
+// Check and increment in one statement, so two concurrent completions cannot both pass
+// a limit that has room for only one. No row returned means over the limit.
+func (q *Queries) AddStorageUsed(ctx context.Context, arg AddStorageUsedParams) (int64, error) {
+	row := q.db.QueryRow(ctx, addStorageUsed, arg.Bytes, arg.ID)
+	var storage_used int64
+	err := row.Scan(&storage_used)
+	return storage_used, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, name, storage_limit)
 VALUES ($1, $2, $3, $4)

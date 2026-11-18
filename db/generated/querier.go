@@ -11,7 +11,13 @@ import (
 )
 
 type Querier interface {
+	// Check and increment in one statement, so two concurrent completions cannot both pass
+	// a limit that has room for only one. No row returned means over the limit.
+	AddStorageUsed(ctx context.Context, arg AddStorageUsedParams) (int64, error)
+	// Only ACTIVE -> COMPLETED, owner-scoped like every other lookup.
+	CompleteUploadSession(ctx context.Context, arg CompleteUploadSessionParams) (UploadSession, error)
 	CountLiveChildren(ctx context.Context, arg CountLiveChildrenParams) (int64, error)
+	// The caller generates id so the storage key users/{owner}/files/{id}/... exists before the row.
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateFolder(ctx context.Context, arg CreateFolderParams) (Folder, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
@@ -31,6 +37,8 @@ type Querier interface {
 	// Walk from the folder up to the root. Ordered root → leaf for breadcrumbs.
 	ListFolderPath(ctx context.Context, arg ListFolderPathParams) ([]ListFolderPathRow, error)
 	ListFoldersByParent(ctx context.Context, arg ListFoldersByParentParams) ([]Folder, error)
+	// Only UPLOADING -> READY. A second completion, or another owner, matches no row.
+	MarkFileReady(ctx context.Context, arg MarkFileReadyParams) (File, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
 	RevokeRefreshTokenFamily(ctx context.Context, familyID uuid.UUID) error
 	SoftDeleteFile(ctx context.Context, arg SoftDeleteFileParams) (File, error)

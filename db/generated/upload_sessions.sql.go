@@ -12,6 +12,41 @@ import (
 	"github.com/google/uuid"
 )
 
+const completeUploadSession = `-- name: CompleteUploadSession :one
+UPDATE upload_sessions
+SET status = 'COMPLETED',
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND status = 'ACTIVE'
+RETURNING id, user_id, file_id, upload_id, declared_size, reserved_bytes, parts_uploaded, status, expires_at, created_at, updated_at
+`
+
+type CompleteUploadSessionParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Only ACTIVE -> COMPLETED, owner-scoped like every other lookup.
+func (q *Queries) CompleteUploadSession(ctx context.Context, arg CompleteUploadSessionParams) (UploadSession, error) {
+	row := q.db.QueryRow(ctx, completeUploadSession, arg.ID, arg.UserID)
+	var i UploadSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.FileID,
+		&i.UploadID,
+		&i.DeclaredSize,
+		&i.ReservedBytes,
+		&i.PartsUploaded,
+		&i.Status,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createUploadSession = `-- name: CreateUploadSession :one
 INSERT INTO upload_sessions (
     user_id,

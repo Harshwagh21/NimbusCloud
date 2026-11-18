@@ -17,3 +17,13 @@ SELECT *
 FROM upload_sessions
 WHERE id = $1
   AND user_id = $2;
+
+-- Only ACTIVE -> COMPLETED, owner-scoped like every other lookup.
+-- name: CompleteUploadSession :one
+UPDATE upload_sessions
+SET status = 'COMPLETED',
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND status = 'ACTIVE'
+RETURNING *;

@@ -13,6 +13,7 @@ import (
 
 const createFile = `-- name: CreateFile :one
 INSERT INTO files (
+    id,
     owner_id,
     folder_id,
     name,
@@ -22,11 +23,12 @@ INSERT INTO files (
     checksum,
     status
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, owner_id, folder_id, name, storage_key, mime_type, size, checksum, status, created_at, updated_at, deleted_at
 `
 
 type CreateFileParams struct {
+	ID         uuid.UUID
 	OwnerID    uuid.UUID
 	FolderID   *uuid.UUID
 	Name       string
@@ -37,8 +39,10 @@ type CreateFileParams struct {
 	Status     FileStatus
 }
 
+// The caller generates id so the storage key users/{owner}/files/{id}/... exists before the row.
 func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, error) {
 	row := q.db.QueryRow(ctx, createFile,
+		arg.ID,
 		arg.OwnerID,
 		arg.FolderID,
 		arg.Name,
@@ -145,6 +149,45 @@ func (q *Queries) ListFilesByFolder(ctx context.Context, arg ListFilesByFolderPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const markFileReady = `-- name: MarkFileReady :one
+UPDATE files
+SET status = 'READY',
+    mime_type = $1,
+    updated_at = now()
+WHERE id = $2
+  AND owner_id = $3
+  AND status = 'UPLOADING'
+  AND deleted_at IS NULL
+RETURNING id, owner_id, folder_id, name, storage_key, mime_type, size, checksum, status, created_at, updated_at, deleted_at
+`
+
+type MarkFileReadyParams struct {
+	MimeType string
+	ID       uuid.UUID
+	OwnerID  uuid.UUID
+}
+
+// Only UPLOADING -> READY. A second completion, or another owner, matches no row.
+func (q *Queries) MarkFileReady(ctx context.Context, arg MarkFileReadyParams) (File, error) {
+	row := q.db.QueryRow(ctx, markFileReady, arg.MimeType, arg.ID, arg.OwnerID)
+	var i File
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.FolderID,
+		&i.Name,
+		&i.StorageKey,
+		&i.MimeType,
+		&i.Size,
+		&i.Checksum,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const softDeleteFile = `-- name: SoftDeleteFile :one
