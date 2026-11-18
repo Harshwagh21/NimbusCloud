@@ -29,6 +29,7 @@ import (
 	authsvc "github.com/Harshwagh21/NimbusCloud/internal/service/auth"
 	foldersvc "github.com/Harshwagh21/NimbusCloud/internal/service/content/folder"
 	"github.com/Harshwagh21/NimbusCloud/middleware"
+	"github.com/Harshwagh21/NimbusCloud/storage"
 )
 
 // version is injected at build time with -ldflags and reported by the probes.
@@ -92,7 +93,7 @@ func buildRouter(cfg config.Config, pool *pgxpool.Pool) (http.Handler, error) {
 	}
 	return server.NewRouter(server.Dependencies{
 		Config:           cfg,
-		Health:           health.New(version, database.NewPoolChecker(pool)),
+		Health:           health.New(version, database.NewPoolChecker(pool), storage.NewS3(cfg.Storage)),
 		Auth:             authhandler.New(service, cfg.RefreshTokenTTL),
 		Folders:          folderhandler.New(foldersvc.New(folderrepo.NewRepository(pool))),
 		ParseAccessToken: service.ParseAccessToken,
